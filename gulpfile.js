@@ -1,38 +1,38 @@
 // node-slate
 
 // Imports
-const cleanCss =      require('gulp-clean-css');
-const concat =        require('gulp-concat');
-const del =           require('del');
-const ejs =           require('gulp-ejs');
-const fs =            require('fs');
-const gls =           require('gulp-live-server');
-const gulp =          require('gulp');
-const gulpIf =        require('gulp-if');
-const log =           require('fancy-log');
-const highlight =     require('highlight.js');
-const htmlHint =      require('gulp-htmlhint');
-const htmlValidator = require('gulp-w3c-html-validator');
-const jsHint =        require('gulp-jshint');
-const marked =        require('marked');
-const mergeStream =   require('merge-stream');
-const open =          require('gulp-open');
-const prettify =      require('gulp-prettify');
-const rename =        require('gulp-rename');
-const sass =          require('gulp-sass');
-const uglify =        require('gulp-uglify');
-const yaml =          require('js-yaml');
+const cleanCss =         require('gulp-clean-css');
+const concat =           require('gulp-concat');
+const del =              require('del');
+const ejs =              require('gulp-ejs');
+const fs =               require('fs');
+const gls =              require('gulp-live-server');
+const gulp =             require('gulp');
+const gulpIf =           require('gulp-if');
+const log =              require('fancy-log');
+const highlight =        require('highlight.js');
+const htmlHint =         require('gulp-htmlhint');
+const jsHint =           require('gulp-jshint');
+const marked =           require('marked');
+const mergeStream =      require('merge-stream');
+const open =             require('gulp-open');
+const prettify =         require('gulp-prettify');
+const rename =           require('gulp-rename');
+const sass =             require('gulp-sass');
+const uglify =           require('gulp-uglify');
+const w3cHtmlValidator = require('gulp-w3cjs');
+const yaml =             require('js-yaml');
 
 // Setup
 const pkg = require('./package.json');
 const port = 4567;
-const htmlHintConfig = { 'attr-value-double-quotes': false };
+const htmlHintConfig = { 'attr-value-double-quotes': false, "attr-unsafe-chars": true, "alt-require": true, "tag-pair": true,};
 const jsHintConfig = {
-   jquery:  true,
-   browser: true,
-   undef:   true,
-   unused:  true,
-   };
+    jquery:  true,
+    browser: true,
+    undef:   true,
+    unused:  true,
+    };
 let compress = true;
 const jsFiles = {
    libs: [
@@ -55,78 +55,84 @@ const jsFiles = {
 
 // Helper functions
 const renderer = new marked.Renderer();
-renderer.code = (code, language) => {
+renderer.heading = (text, level) => `<h${level} id="${encodeURIComponent(text)}">${text}</h${level}>`;
+
+renderer.code = function(code, language) {
    const highlighted = language ? highlight.highlight(language, code).value :
       highlight.highlightAuto(code).value;
    return `<pre class="highlight ${language}"><code>${highlighted}</code></pre>`;
    };
-const readIndexYml = () => yaml.safeLoad(fs.readFileSync('./source/index.yml', 'utf8'));
-const getPageData = () => {
+function readIndexYml() {
+   return yaml.safeLoad(fs.readFileSync('./source/index.yml', 'utf8'));
+   }
+function getPageData() {
    const config = readIndexYml();
    const includes = config.includes
-      .map(include => `./source/includes/${include}.md`)
-      .map(include => fs.readFileSync(include, 'utf8'))
-      .map(include => marked(include, { renderer: renderer }));
-   const getPageData = {
+      .map(function(include) { return `./source/includes/${include}.md`; })
+      .map(function(include) { return fs.readFileSync(include, 'utf8'); })
+      .map(function(include) { return marked(include, { renderer: renderer }); });
+   return {
       current_page: { data: config },
       page_classes: '',
       includes: includes,
-      image_tag: (filename) => {
+      image_tag: function(filename) {
          const code = filename.split('.')[0];
          return `<img alt=${code} class=image-${code} src=images/${filename}>`;
          },
-      javascript_include_tag: (name) =>
-         `<script src=javascripts/${name}.js type=text/javascript></script>\n`,
-      stylesheet_link_tag: (name, media) =>
-         `<link href=stylesheets/${name}.css rel=stylesheet media=${media}>`,
-      langs: (config.language_tabs || []).map(
-         lang => typeof lang == 'string' ? lang : lang.keys.first)
+      javascript_include_tag: function(name) {
+         return `<script src=javascripts/${name}.js type=text/javascript></script>\n`;
+         },
+      stylesheet_link_tag: function(name, media) {
+         return `<link href=stylesheets/${name}.css rel=stylesheet media=${media}>`;
+         },
+      langs: (config.language_tabs || []).map(function(lang) {
+         return typeof lang == 'string' ? lang : lang.keys.first;
+         })
       };
-   return getPageData;
-   };
+   }
 
 // Tasks
 const task = {
-   clean: () => {
+   clean: function() {
       console.log(pkg.name, 'v' + pkg.version);
       return del(['build/*']);
       },
-   runStaticAnalysis: () => {
-      const ignoreDuplicateIds = (type, message) => !/^Duplicate ID/.test(message);
+   runStaticAnalysis: function() {
+      function ignoreDuplicateIds(type, message) { return !/^Duplicate ID/.test(message); }
       return mergeStream(
          gulp.src('build/index.html')
+            .pipe(w3cHtmlValidator({ verifyMessage: ignoreDuplicateIds }))
+            .pipe(w3cHtmlValidator.reporter())
             .pipe(htmlHint(htmlHintConfig))
-            .pipe(htmlHint.reporter())
-            .pipe(htmlValidator({ verifyMessage: ignoreDuplicateIds }))
-            .pipe(htmlValidator.reporter()),
+            .pipe(htmlHint.reporter()),
          gulp.src(jsFiles.scripts)
             .pipe(jsHint(jsHintConfig))
             .pipe(jsHint.reporter())
          );
       },
-   buildFonts: () => {
+   buildFonts: function() {
       return gulp.src('./source/fonts/**/*')
          .pipe(gulp.dest('build/fonts'));
       },
-   buildImages: () => {
+   buildImages: function() {
       return gulp.src('./source/images/**/*')
          .pipe(gulp.dest('build/images'));
       },
-   buildJs: () => {
+   buildJs: function() {
       const config = readIndexYml();
       return gulp.src(jsFiles.libs.concat(config.search ? jsFiles.search : [], jsFiles.scripts))
          .pipe(concat('all.js'))
          .pipe(gulpIf(compress, uglify()))
          .pipe(gulp.dest('./build/javascripts'));
       },
-   buildCss: () => {
+   buildCss: function() {
       return gulp.src('./source/stylesheets/*.css.scss')
          .pipe(sass().on('error', sass.logError))
          .pipe(rename({ extname: '' }))
          .pipe(gulpIf(compress, cleanCss()))
          .pipe(gulp.dest('./build/stylesheets'));
       },
-   addHighlightStyle: () => {
+   addHighlightStyle: function() {
       const config = readIndexYml();
       const path = './node_modules/highlight.js/styles/' + config.highlight_theme + '.css';
       return gulp.src(path)
@@ -134,14 +140,14 @@ const task = {
          .pipe(gulpIf(compress, cleanCss()))
          .pipe(gulp.dest('./build/stylesheets'));
       },
-   buildHtml: () => {
+   buildHtml: function() {
       const data = getPageData();
       return gulp.src('./source/*.html')
          .pipe(ejs(data).on('error', log.error))
          .pipe(gulpIf(compress, prettify({ indent_size: 3 })))
          .pipe(gulp.dest('./build'));
       },
-   build: () => {
+   build: function() {
       return mergeStream(
          task.buildFonts(),
          task.buildImages(),
@@ -151,19 +157,19 @@ const task = {
          task.buildHtml()
          );
       },
-   buildUncompressed: () => {
+   buildUncompressed: function() {
       compress = false;
       return task.build();
       },
-   runServer: () => {
+   runServer: function() {
       gulp.watch('./source/*.html',           gulp.parallel('build-html'));
       gulp.watch('./source/includes/**/*',    gulp.parallel('build-html'));
-      gulp.watch('./source/javascripts/**/*', gulp.parallel('build-js'));
+      gulp.watch('./source/javascripts/**/*', gulp.parallel('build-uncompressed'));
       gulp.watch('./source/stylesheets/**/*', gulp.parallel('build-css'));
-      gulp.watch('./source/index.yml',        gulp.parallel('build-highlightjs', 'build-js', 'build-html'));
+      gulp.watch('./source/index.yml',        gulp.parallel('build-highlightjs', 'build-uncompressed', 'build-html'));
       const server = gls.static('build', port);
       server.start();
-      const notifyServer = (file) => server.notify.apply(server, [file]);
+      function notifyServer(file) { server.notify.apply(server, [file]); }
       gulp.watch('build/**/*', notifyServer);
       gulp.src(__filename).pipe(open({ uri: 'http://localhost:' + port }));
       }

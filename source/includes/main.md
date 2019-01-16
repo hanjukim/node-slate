@@ -46,9 +46,9 @@ Kittn expects for the API key to be included in all API requests to the server i
 You must replace <code>meowmeowmeow</code> with your personal API key.
 </aside>
 
-# Kittens
+# 냥이들
 
-## Get All Kittens
+## 모든 냥이들 가져오기
 
 ```ruby
 require 'kittn'
